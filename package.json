@@ -4,17 +4,37 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "clean": "rimraf output",
+    "transpile": "babel src --out-dir output --copy-files",
+    "build": "npm run clean && npm run transpile",
+    "server": "node ./output/index.js",
+    "dev": "npm run build && npm run server",
+    "start": "nodemon"
   },
   "author": "",
   "license": "ISC",
+  "nodemonConfig": {
+    "exec": "npm run dev",
+    "ignore": [
+      "./output"
+    ]
+  },
+  "babel": {
+    "presets": [
+      "@babel/preset-env"
+    ]
+  },
   "dependencies": {
     "express": "^4.17.1",
     "mongoose": "^5.10.6"
   },
   "devDependencies": {
+    "@babel/cli": "^7.11.6",
+    "@babel/core": "^7.11.6",
+    "@babel/preset-env": "^7.11.5",
     "eslint": "^7.9.0",
     "eslint-config-airbnb": "^18.2.0",
-    "nodemon": "^2.0.4"
+    "nodemon": "^2.0.4",
+    "rimraf": "^3.0.2"
   }
 }
