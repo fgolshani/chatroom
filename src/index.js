@@ -4,9 +4,11 @@ import http from "http";
 import path from "path";
 import mongoose from "mongoose";
 import { UserModel } from "./models/user.model";
+import { RoomModel } from "./models/room.model";
 import bcrypt from "bcrypt";
 import cors from "cors"; //NOT IMPORTANT
 import jwt from "jsonwebtoken";
+import { MessageModel } from "./models/message.model";
 
 const SECRET = "secret";
 
@@ -106,6 +108,7 @@ async function getUser(req, res){
 async function login(req, res){
   const { username, password } = req.body;
   const user = await UserModel.findOne({ username });
+  if(!user) return res.status(400).json({error: "user not found."})
   const hashedPassword = await bcrypt.hash(password, user.salt);
 
   if(hashedPassword == user.password){
@@ -121,14 +124,58 @@ async function login(req, res){
   }
 }
 
+async function createRoom(req, res){
+  const roomName = req.body.room;
+  const isRoomExists = await RoomModel.exists({ name: roomName });
+  // if(isRoomExists){
+  //   res.json({
+  //     error: "The room name should be unique"
+  //   });
+  //   return;
+  // }
+
+  const newRoom = new RoomModel({
+    name: roomName
+  });
+  try {
+    await newRoom.save();
+  }catch (err){
+    res.json({
+      error: err.message
+    });
+    return;
+  }
+
+  res.send(newRoom);
+  return;
+}
+
+async function getRoom(req, res){
+  const roomList = await RoomModel.find();
+  res.json(roomList);
+  return;
+}
+
+async function getRoomMessage(req, res){
+  const roomName = req.params.room;
+  const list = await MessageModel.find({ room: roomName });
+  res.send(list);
+  return;
+}
+
 // parse url encoded requests
-app.use(urlencoded({ extended: true }))
+app.use(urlencoded({ extended: true }));
 // parse json requests
-app.use(json())
+app.use(json());
 
 app.get("/", (req, res) => {
   res.send("Hi");
 })
+
+//Room creation endpoint
+app.post("/room", createRoom);
+
+app.get("/room", getRoom);
 
 //User creation endpoint
 app.post("/user", createUser);
@@ -137,43 +184,72 @@ app.get("/user", getUser);
 
 app.post("/login", login);
 
-const userList = [];
+//get messages from room
+
+app.get("/message/:room", getRoomMessage);
+
+let userList = [];
 
 io.on("connection", (socket) => {
-  socket.on("joinRoom", ({ username, room }) => {
+  
+  //join room Event. handles user joining rooms.
+  socket.on("joinRoom", async ({ username, room }) => {
     console.log({ username, room });
     // const obj = {
     //   username: username,
     //   room: room
     // }
-    userList.push({ username, room, socket });
-
-    socket.join(room);
-
-    socket.emit("message", formatMessage("Welcome to chatroom"));
-
-    socket.broadcast
-      .to(room)
-      .emit("message", formatMessage(username + " has joined to the chatroom"));
-
-    io.to(room).emit("roomUsers", {
-      room,
-      users: userList
-        .filter((item) => item.room == room)
-        .map((item) => ({ username: item.username })),
-      // (item) => {return item.username}
-    });
+    const roomExists = await RoomModel.exists({ name: room });
+    if (roomExists){
+      // check if user is joined another room, block it.
+      const newList = userList.filter((item) => item.username == username);
+      if (newList.length == 0){
+        userList.push({ username, room, socket });
+    
+        // let newList = userList.filter((name) => name != "farbod")
+    
+        socket.join(room);//room,
+    
+        socket.emit("message", formatMessage("Welcome to chatroom"));
+    
+        socket.broadcast
+          .to(room)
+          .emit("message", formatMessage(username + " has joined to the chatroom"));
+    
+        io.to(room).emit("roomUsers", {
+          room,
+          users: userList
+            .filter((item) => item.room == room)
+            .map((item) => ({ username: item.username })),
+          // (item) => {return item.username}
+        });
+      }
+      }
   });
 
-  socket.on("chatMessage", (message) => {
+  //Chat message event. handles sending new chat message from user.
+  socket.on("chatMessage", async (message) => {
     const userItem = userList.find((item) => item.socket.id == socket.id);
+    const room = userItem["room"]; // == userItem.room
 
+    let newMessage = new MessageModel({
+      content: message,
+      room: room,
+      timestamp: new Date()
+    });
+    await newMessage.save();
     io.to(userItem.room).emit(
       "message",
       formatMessage(message, userItem.username)
     );
   });
-  // TODO: add disconnect event
+  
+  socket.on("disconnect", function(){
+    const userItem = userList.find((item) => item.socket.id == socket.id);
+    if(userItem)
+    userList = userList.filter((item) => item.socket.id != socket.id);
+    // send event to other users.
+  })
 });
 
 server.listen(port, () => {
