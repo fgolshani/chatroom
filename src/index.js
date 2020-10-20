@@ -9,42 +9,63 @@ import bcrypt from "bcrypt";
 import cors from "cors"; //NOT IMPORTANT
 import jwt from "jsonwebtoken";
 import { MessageModel } from "./models/message.model";
+import swaggerJsDoc from "swagger-jsdoc";
+import swaggerUi from "swagger-ui-express";
 
 const SECRET = "secret";
+
+const swaggerOptions = {
+  definition: {
+    openapi: '3.0.0', // Specification (optional, defaults to swagger: '2.0')
+    info: {
+      title: 'Hello World', // Title (required)
+      version: '1.0.0', // Version (required)
+    },
+  },
+  // Path to the API docs
+  apis: [path.join(__dirname, "..", "src", "index.js")],
+};
+
+const swaggerSpec = swaggerJsDoc(swaggerOptions);
 
 mongoose.connect("mongodb://localhost/chatroom",{
   useNewUrlParser: true,
   useUnifiedTopology: true,
   useFindAndModify: false,
   useCreateIndex: true}               
-).then(()=> {
-  console.log("connected");
-})
-
-const botName = "Chat Bot";
-function formatMessage(message, username = botName) {
-  return {
-    text: message,
-    username,
-    time: new Date(),
-  };
-}
-
-const app = express();
-const server = http.createServer(app);
-const io = Socket(server);
-const port = 3000;
-
-app.use(cors()); //NOT IMPORTANT
-
-app.use(express.static(path.join(__dirname, "public")));
-
-async function createUser(req, res){
+  ).then(()=> {
+    console.log("connected");
+  })
+  
+  const botName = "Chat Bot";
+  function formatMessage(message, username = botName) {
+    return {
+      text: message,
+      username,
+      time: new Date(),
+    };
+  }
+  
+  const app = express();
+  const server = http.createServer(app);
+  const io = Socket(server);
+  const port = 3000;
+  
+  app.use(cors()); //NOT IMPORTANT
+  
+  app.use(express.static(path.join(__dirname, "public")));
+  // app.get('/api-docs.json', (req, res) => {
+  //   res.setHeader('Content-Type', 'application/json');
+  //   res.send(swaggerSpec);
+  // });
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+  
+  async function createUser(req, res){
     // const username = req.body.username;
-  // const password = req.body.password;
-  // const name = req.body.name;
-
-  const { username, password, name } = req.body;
+    // const password = req.body.password;
+    // const name = req.body.name;
+    
+    const { username, password, name } = req.body;
   const salt = bcrypt.genSaltSync(10);
   const hashedPassword = await bcrypt.hash(password, salt);
   // const newUser = new UserModel({
@@ -173,6 +194,24 @@ app.get("/", (req, res) => {
 })
 
 //Room creation endpoint
+/**
+ * @swagger
+ *
+ * /room:
+ *   post:
+ *     description: creates a room 
+ *     produces:
+ *       - application/json
+ *     parameters:
+ *       - name: roomName
+ *         description: room name.
+ *         in: body
+ *         required: true
+ *         type: string
+ *     responses:
+ *       200:
+ *         description: room is created
+ */
 app.post("/room", createRoom);
 
 app.get("/room", getRoom);
@@ -194,11 +233,29 @@ io.on("connection", (socket) => {
   
   //join room Event. handles user joining rooms.
   socket.on("joinRoom", async ({ username, room }) => {
-    console.log({ username, room });
+
+    
     // const obj = {
     //   username: username,
     //   room: room
     // }
+
+    //sends previous message to newly joined user
+    const previousMessages = (await MessageModel.find({
+      room : room
+    }))
+    .map(item=>{
+      console.log(item)
+      return{
+        text: item.content,
+        id: item.id,
+        username: item.username,
+        time: item.timestamp,
+      }
+    })
+    
+    socket.emit("previousMessages", previousMessages)
+
     const roomExists = await RoomModel.exists({ name: room });
     if (roomExists){
       // check if user is joined another room, block it.
@@ -234,6 +291,7 @@ io.on("connection", (socket) => {
 
     let newMessage = new MessageModel({
       content: message,
+      username: userItem.username,
       room: room,
       timestamp: new Date()
     });

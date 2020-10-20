@@ -20,6 +20,8 @@
     ]
   },
   "babel": {
+    "retainLines": true,
+    "sourceMaps": true,
     "presets": [
       "@babel/preset-env"
     ],
@@ -30,13 +32,16 @@
     ]
   },
   "dependencies": {
+    "@babel/node": "^7.12.1",
     "@babel/runtime": "^7.11.2",
     "bcrypt": "^5.0.0",
     "cors": "^2.8.5",
     "express": "^4.17.1",
     "jsonwebtoken": "^8.5.1",
     "mongoose": "^5.10.9",
-    "socket.io": "^2.3.0"
+    "socket.io": "^2.3.0",
+    "swagger-jsdoc": "^4.3.0",
+    "swagger-ui-express": "^4.1.4"
   },
   "devDependencies": {
     "@babel/cli": "^7.11.6",
